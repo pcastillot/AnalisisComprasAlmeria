@@ -1,3 +1,5 @@
+import numpy
+
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -19,7 +21,10 @@ def load_data(nrows):
     # Pasamos las cabeceras a minuscula y le damos formate fecha a la fecha
     lowercase = lambda x: str(x).lower()
     data.rename(lowercase, axis='columns', inplace=True)
-    data['dia'] = pd.to_datetime(data['dia'], yearfirst=True)
+    #data['dia'] = (pd.to_datetime(data['dia'], yearfirst=True))
+    comas_por_puntos = lambda x: str(x).replace(',', '.')
+    data['importe'] = data['importe'].map(comas_por_puntos)
+    data['importe'] = pd.to_numeric(data['importe'])
     print(data)
     return data
 
@@ -35,6 +40,9 @@ data = []
 data_load_state = st.text('Cargando datos...')
 data = load_data(nFilas)
 data_load_state.text("Completado!")
+
+# Reemplazar comas por puntos en la columna importe
+print(data.dtypes)
 
 if st.checkbox('Mostrar datos'):
     st.subheader('Datos')
@@ -93,3 +101,23 @@ st.pydeck_chart(pdk.Deck(
         ),
     ],
 ))
+
+st.subheader("Compras por mes")
+df_mes = data
+get_mes = df_mes['dia'].map(lambda x: x[:7])
+counts_mes = Counter(get_mes)
+df_mes_compra = pd.DataFrame.from_dict(counts_mes, orient='index')
+st.caption('Numero de compras por mes.')
+st.bar_chart(df_mes_compra)
+df_gastos_mes = pd.DataFrame(get_mes).join(data['importe'])
+df_gastos_mes = df_gastos_mes.groupby('dia')['importe'].sum()
+st.caption('Importe gastado por mes.')
+st.bar_chart(df_gastos_mes)
+
+
+st.subheader("Compras por dia")
+st.caption('Numero de compras por dia.')
+counts_dia = Counter(data['dia'])
+df_dia_compra = pd.DataFrame.from_dict(counts_dia, orient='index')
+if st.checkbox('Mostrar compras por dia'):
+    st.line_chart(df_dia_compra, width=2000, use_container_width=False)
