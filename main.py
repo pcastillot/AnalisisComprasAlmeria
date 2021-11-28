@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import re
 import pydeck as pdk
 from collections import Counter
 
@@ -35,9 +36,9 @@ data_load_state = st.text('Cargando datos...')
 data = load_data(nFilas)
 data_load_state.text("Completado!")
 
-#if st.checkbox('Mostrar datos'):
-#    st.subheader('Datos')
-#    st.write(data)
+if st.checkbox('Mostrar datos'):
+    st.subheader('Datos')
+    st.write(data)
 
 st.subheader('Numero de compras por franja horaria')
 # Obtenemos las compras que hay por cada franja horaria y creamos un DataFrame para mostrarlo en el gráfico
@@ -48,7 +49,12 @@ st.bar_chart(df_horas_compra)
 # Creamos un slider para filtrar los resultados en el mapa
 hour_to_filter = st.slider('Hora', 0, 22, 16, step=2)
 # Como nos devuelve un entero, lo hacemos string y cambiamos para que pueda compararse con los datos del DataFrame
-hour_to_filter = str(hour_to_filter) + '-' + str(hour_to_filter+2)
+# En caso de ser un numero de un solo digito, lo añadimos un 0 al principio para coincidir con el formato del DataFrame
+if re.match(r'^\d$', str(hour_to_filter)) is None:
+    hour_to_filter = str(hour_to_filter) + '-' + str(hour_to_filter+2)
+else:
+    hour_to_filter = '0' + str(hour_to_filter) + '-' + str(hour_to_filter+2)
+
 filtered_data = data[data["franja_horaria"] == hour_to_filter]
 
 # Preparamos el titulo y cargamos los datos en el mapa
@@ -75,7 +81,6 @@ st.pydeck_chart(pdk.Deck(
             get_width="outbound",
             width_min_pixels=3,
             width_max_pixels=30,
-            id="Movimientos de compra",
         ),
         pdk.Layer(
             "HexagonLayer",
@@ -85,7 +90,6 @@ st.pydeck_chart(pdk.Deck(
             elevation_scale=400,
             elevation_range=[0, 600],
             extruded=True,
-            id="Compras por CP",
         ),
     ],
 ))
