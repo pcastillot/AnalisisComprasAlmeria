@@ -102,6 +102,7 @@ st.pydeck_chart(pdk.Deck(
     ],
 ))
 
+# KPI compras por mes representado en barras
 st.subheader("Compras por mes")
 df_mes = data
 get_mes = df_mes['dia'].map(lambda x: x[:7])
@@ -109,12 +110,14 @@ counts_mes = Counter(get_mes)
 df_mes_compra = pd.DataFrame.from_dict(counts_mes, orient='index')
 st.caption('Numero de compras por mes.')
 st.bar_chart(df_mes_compra)
+
+# KPI dinero gastado al mes
 df_gastos_mes = pd.DataFrame(get_mes).join(data['importe'])
 df_gastos_mes = df_gastos_mes.groupby('dia')['importe'].sum()
 st.caption('Importe gastado por mes.')
 st.bar_chart(df_gastos_mes)
 
-
+# KPI compras por día representado en lineas
 st.subheader("Compras por dia")
 st.caption('Numero de compras por dia.')
 counts_dia = Counter(data['dia'])
