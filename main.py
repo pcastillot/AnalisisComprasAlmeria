@@ -6,26 +6,26 @@ import numpy as np
 import re
 import pydeck as pdk
 from collections import Counter
+from pyspark.sql import Row, SparkSession
 
 # Titulo de la pagina
+from pyspark.sql.functions import regexp_replace, col
+from pyspark.sql.types import FloatType
+
 st.title('Compras en Almeria')
 
 DATA_URL = "datos/cards_nuevo.csv"
 
 # Mediante st.cache guardamos en cache los datos para no tener que cargarlos en cada prueba
 # Funcion para cargar n filas del csv
-@st.cache
-def load_data(nrows):
+# @st.cache
+def load_data():
     # DataFrame del csv a cargar
-    data = pd.read_csv(DATA_URL, nrows=nrows, delimiter="|")
-    # Pasamos las cabeceras a minuscula y le damos formate fecha a la fecha
-    lowercase = lambda x: str(x).lower()
-    data.rename(lowercase, axis='columns', inplace=True)
-    #data['dia'] = (pd.to_datetime(data['dia'], yearfirst=True))
-    comas_por_puntos = lambda x: str(x).replace(',', '.')
-    data['importe'] = data['importe'].map(comas_por_puntos)
-    data['importe'] = pd.to_numeric(data['importe'])
-    print(data)
+    spark = SparkSession.builder.appName("DataFrame").getOrCreate()
+    data = spark.read.options(delimiter="|", header=True, encoding='UTF-8').csv(DATA_URL)
+    data = data.withColumn('importe', regexp_replace('importe', ',', '.'))  # data.mapInPandas(comas_por_puntos, data.schema)
+    data = data.withColumn('importe', col('importe').cast(FloatType()))
+    # data.show()
     return data
 
 
@@ -38,7 +38,7 @@ data = []
 # Hasta que no pulsemos el boton no intentará cargar los datos
 #if st.button('Cargar datos'):
 data_load_state = st.text('Cargando datos...')
-data = load_data(nFilas)
+data = load_data()
 data_load_state.text("Completado!")
 
 # Reemplazar comas por puntos en la columna importe
@@ -46,11 +46,18 @@ print(data.dtypes)
 
 if st.checkbox('Mostrar datos'):
     st.subheader('Datos')
-    st.write(data)
+    st.write(data.toPandas().to_csv())
 
 st.subheader('Numero de compras por franja horaria')
 # Obtenemos las compras que hay por cada franja horaria y creamos un DataFrame para mostrarlo en el gráfico
-counts = Counter(data['franja_horaria'])
+
+list_franja = []
+for col in data.collect():
+    list_franja.append(col["franja_horaria"])
+
+counts = Counter(list_franja)
+print("COUNTS")
+print(counts)
 df_horas_compra = pd.DataFrame.from_dict(counts, orient='index')
 st.bar_chart(df_horas_compra)
 
