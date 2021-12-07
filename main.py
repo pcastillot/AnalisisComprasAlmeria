@@ -20,7 +20,7 @@ spark = SparkSession.builder.appName("DataFrame").getOrCreate()
 
 DATA_CARDS = "datos/cards_nuevo.csv"
 DATA_WEATHER = "datos/weather.csv"
-
+RANGO_HORAS = ['00-02','02-04','04-06','06-08','08-10','10-12','12-14','14-16','16-18','18-20','20-22','22-24']
 DICT_MES = {
     'Enero': '2015-01',
     'Febrero': '2015-02',
@@ -77,15 +77,6 @@ dataCards = []
 if nFilas:
     data_load_state = st.text('Cargando datos...')
     dataCards, dataWeather = load_data(nFilas)
-    if not dataCards.cache():
-        dataCards.cache()
-        dataCards.count()
-
-    if not dataWeather.cache():
-        dataWeather.cache()
-        dataWeather.count()
-
-
 
     data_load_state.text("Completado!")
 
@@ -108,17 +99,17 @@ if nFilas:
     st.subheader('Mapa de compras')
 
     # Creamos un slider para filtrar los resultados en el mapa
-    hour_to_filter = st.slider('Hora', 0, 22, 16, step=2)
+    hour_to_filter = st.select_slider('Hora', options=RANGO_HORAS)
 
     # Como nos devuelve un entero, lo hacemos string y cambiamos para que pueda compararse con los datos del DataFrame
     # En caso de ser un numero de un solo digito, lo añadimos un 0 al principio para coincidir con el formato del DataFrame
-    if re.match(r'^\d$', str(hour_to_filter)) is None:
-        hour_to_filter = str(hour_to_filter) + '-' + str(hour_to_filter+2)
-    else:
-        if hour_to_filter + 2 < 10:
-            hour_to_filter = '0' + str(hour_to_filter) + '-0' + str(hour_to_filter+2)
-        else:
-            hour_to_filter = '0' + str(hour_to_filter) + '-' + str(hour_to_filter+2)
+    # if re.match(r'^\d$', str(hour_to_filter)) is None:
+    #     hour_to_filter = str(hour_to_filter) + '-' + str(hour_to_filter+2)
+    # else:
+    #     if hour_to_filter + 2 < 10:
+    #         hour_to_filter = '0' + str(hour_to_filter) + '-0' + str(hour_to_filter+2)
+    #     else:
+    #         hour_to_filter = '0' + str(hour_to_filter) + '-' + str(hour_to_filter+2)
 
     #Importe maximo del dataset
     importeMaxData = int(dataCards.agg({'importe': 'max'}).collect()[0]['max(importe)'])
@@ -212,11 +203,7 @@ if nFilas:
 
     # Compras por dias del mes
     st.subheader('Estadísticas por dias del mes')
-    mes = st.select_slider(
-         'Selecciona el mes',
-         options=DICT_MES.keys(),
-         value='Enero'
-    )
+    mes = st.select_slider('Selecciona el mes', options=DICT_MES.keys(), value='Enero')
 
     # Numero de compras por dia
     df_dias_mes = dataCards.select('dia')
@@ -226,7 +213,7 @@ if nFilas:
     df_compras_dias_mes = pd.DataFrame.from_dict(counts_dias, orient='index')
     df_compras_dias_mes.columns = ['nCompras']
     st.caption('Numero de compras por dia del mes.')
-    st.bar_chart(df_compras_dias_mes)
+    st.area_chart(df_compras_dias_mes)
 
     # Temperatura por dia
     df_temp_dia = dataWeather.select('FECHA', 'TMax', 'TMed', 'TMin')
