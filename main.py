@@ -118,7 +118,12 @@ importeMax = int(st.number_input("Importe máximo: ", importeMin, importeMaxData
 
 # Creamos un slider para filtrar por importe en el mapa
 importe_to_filter = st.slider('Importe', 0, importeMaxData, (importeMin, importeMax), step=1)
-filtered_data = dataCards.filter((dataCards.franja_horaria == hour_to_filter) & (dataCards.importe > importe_to_filter[0]) & (dataCards.importe < importe_to_filter[1])).toPandas()
+filtered_data = dataCards.select('lat', 'lon', 'lat_cliente', 'lon_cliente', 'franja_horaria')\
+    .filter(
+        (dataCards.franja_horaria == hour_to_filter) &
+        (dataCards.importe > importe_to_filter[0]) &
+        (dataCards.importe < importe_to_filter[1])
+    ).toPandas()
 
 st.pydeck_chart(pdk.Deck(
     map_style='mapbox://styles/mapbox/light-v9',
