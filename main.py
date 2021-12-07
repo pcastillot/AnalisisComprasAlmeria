@@ -1,3 +1,5 @@
+import _thread
+
 import numpy
 
 import streamlit as st
@@ -7,73 +9,116 @@ import re
 import pydeck as pdk
 from collections import Counter
 from pyspark.sql import Row, SparkSession
-
-# Titulo de la pagina
+from pyspark.sql.functions import hash, substring, avg
 from pyspark.sql.functions import regexp_replace, col
-from pyspark.sql.types import FloatType
+from pyspark.sql.types import StringType, FloatType
 
 st.title('Compras en Almeria')
 
-DATA_URL = "datos/cards_nuevo.csv"
+spark = SparkSession.builder.appName("DataFrame").getOrCreate()
+
+DATA_CARDS = "datos/cards_nuevo.csv"
+DATA_WEATHER = "datos/weather.csv"
+
+DICT_MES = {
+    'Enero': '2015-01',
+    'Febrero': '2015-02',
+    'Marzo': '2015-03',
+    'Abril': '2015-04',
+    'Mayo': '2015-05',
+    'Junio': '2015-06',
+    'Julio': '2015-07',
+    'Agosto': '2015-08',
+    'Septiembre': '2015-09',
+    'Octubre': '2015-10',
+    'Noviembre': '2015-11',
+    'Diciembre': '2015-12'
+}
 
 # Mediante st.cache guardamos en cache los datos para no tener que cargarlos en cada prueba
 # Funcion para cargar n filas del csv
 # @st.cache
-def load_data():
-    # DataFrame del csv a cargar
-    spark = SparkSession.builder.appName("DataFrame").getOrCreate()
-    data = spark.read.options(delimiter="|", header=True, encoding='UTF-8').csv(DATA_URL)
-    data = data.withColumn('importe', regexp_replace('importe', ',', '.'))  # data.mapInPandas(comas_por_puntos, data.schema)
-    data = data.withColumn('importe', col('importe').cast(FloatType()))
+def load_data(nFilas):
+    # DataFrame del csv Cards
+    dataCards = spark.read.options(delimiter="|", header=True, encoding='UTF-8').csv(DATA_CARDS).limit(nFilas)
+    dataCards = dataCards.withColumn('importe', regexp_replace('importe', ',', '.'))  # data.mapInPandas(comas_por_puntos, data.schema)
+    dataCards = dataCards.withColumn('importe', col('importe').cast(FloatType()))
+    dataCards = dataCards.withColumn('lat', col('lat').cast(FloatType()))
+    dataCards = dataCards.withColumn('lon', col('lon').cast(FloatType()))
+    dataCards = dataCards.withColumn('lat_cliente', col('lat_cliente').cast(FloatType()))
+    dataCards = dataCards.withColumn('lon_cliente', col('lon_cliente').cast(FloatType()))
+    dataCards = dataCards.withColumn('dia', col('dia').cast(StringType()))
     # data.show()
-    return data
+
+    # DataFrame del csv Weather
+    dataWeather = spark.read.options(delimiter=";", header=True, encoding='UTF-8').csv(DATA_WEATHER)
+    dataWeather = dataWeather.withColumn('TMax', col('TMax').cast(FloatType()))
+    dataWeather = dataWeather.withColumn('HTMax', col('HTMax').cast(FloatType()))
+    dataWeather = dataWeather.withColumn('TMin', col('TMin').cast(FloatType()))
+    dataWeather = dataWeather.withColumn('TMed', col('TMed').cast(FloatType()))
+    dataWeather = dataWeather.withColumn('HumMax', col('HumMax').cast(FloatType()))
+    dataWeather = dataWeather.withColumn('HumMin', col('HumMin').cast(FloatType()))
+    dataWeather = dataWeather.withColumn('HumMed', col('HumMed').cast(FloatType()))
+    dataWeather = dataWeather.withColumn('VelViento', col('VelViento').cast(FloatType()))
+    dataWeather = dataWeather.withColumn('DirViento', col('DirViento').cast(FloatType()))
+    dataWeather = dataWeather.withColumn('Rad', col('Rad').cast(FloatType()))
+    dataWeather = dataWeather.withColumn('Precip', col('Precip').cast(FloatType()))
+    dataWeather = dataWeather.withColumn('ETo', col('ETo').cast(FloatType()))
+
+    return dataCards, dataWeather
+
 
 
 # COMIENZO
 # Input para obtener las filas a cargar
 nFilas = st.number_input("Número de filas a cargar: ", 0, 890612, step=1)
+dataCards = []
 
-data = []
-
-# Hasta que no pulsemos el boton no intentará cargar los datos
-#if st.button('Cargar datos'):
 data_load_state = st.text('Cargando datos...')
-data = load_data()
+dataCards, dataWeather = load_data(nFilas)
 data_load_state.text("Completado!")
-
-# Reemplazar comas por puntos en la columna importe
-print(data.dtypes)
 
 if st.checkbox('Mostrar datos'):
     st.subheader('Datos')
-    st.write(data.toPandas().to_csv())
+    st.write(dataCards.toPandas())
 
 st.subheader('Numero de compras por franja horaria')
 # Obtenemos las compras que hay por cada franja horaria y creamos un DataFrame para mostrarlo en el gráfico
 
 list_franja = []
-for col in data.collect():
+for col in dataCards.collect():
     list_franja.append(col["franja_horaria"])
 
 counts = Counter(list_franja)
-print("COUNTS")
-print(counts)
 df_horas_compra = pd.DataFrame.from_dict(counts, orient='index')
 st.bar_chart(df_horas_compra)
 
+# Preparamos el titulo y cargamos los datos en el mapa
+st.subheader('Mapa de compras')
+
 # Creamos un slider para filtrar los resultados en el mapa
 hour_to_filter = st.slider('Hora', 0, 22, 16, step=2)
+
 # Como nos devuelve un entero, lo hacemos string y cambiamos para que pueda compararse con los datos del DataFrame
 # En caso de ser un numero de un solo digito, lo añadimos un 0 al principio para coincidir con el formato del DataFrame
 if re.match(r'^\d$', str(hour_to_filter)) is None:
     hour_to_filter = str(hour_to_filter) + '-' + str(hour_to_filter+2)
 else:
-    hour_to_filter = '0' + str(hour_to_filter) + '-' + str(hour_to_filter+2)
+    if hour_to_filter + 2 < 10:
+        hour_to_filter = '0' + str(hour_to_filter) + '-0' + str(hour_to_filter+2)
+    else:
+        hour_to_filter = '0' + str(hour_to_filter) + '-' + str(hour_to_filter+2)
 
-filtered_data = data[data["franja_horaria"] == hour_to_filter]
+#Importe maximo del dataset
+importeMaxData = int(dataCards.agg({'importe': 'max'}).collect()[0]['max(importe)'])
 
-# Preparamos el titulo y cargamos los datos en el mapa
-st.subheader('Mapa de compras en el rango ' + hour_to_filter)
+#Inputs importe
+importeMin = int(st.number_input("Importe mínimo: ", 0, importeMaxData, step=1, value=20))
+importeMax = int(st.number_input("Importe máximo: ", importeMin, importeMaxData, step=1, value=50))
+
+# Creamos un slider para filtrar por importe en el mapa
+importe_to_filter = st.slider('Importe', 0, importeMaxData, (importeMin, importeMax), step=1)
+filtered_data = dataCards.filter((dataCards.franja_horaria == hour_to_filter) & (dataCards.importe > importe_to_filter[0]) & (dataCards.importe < importe_to_filter[1])).toPandas()
 
 st.pydeck_chart(pdk.Deck(
     map_style='mapbox://styles/mapbox/light-v9',
@@ -111,23 +156,68 @@ st.pydeck_chart(pdk.Deck(
 
 # KPI compras por mes representado en barras
 st.subheader("Compras por mes")
-df_mes = data
-get_mes = df_mes['dia'].map(lambda x: x[:7])
-counts_mes = Counter(get_mes)
+df_mes = dataCards
+df_mes = df_mes.withColumn('dia', substring('dia', 1, 7))
+# df_mes = spark.createDataFrame(get_mes, df_mes.schema)
+list_mes = []
+for col in df_mes.collect():
+    list_mes.append(col["dia"])
+counts_mes = Counter(list_mes)
 df_mes_compra = pd.DataFrame.from_dict(counts_mes, orient='index')
 st.caption('Numero de compras por mes.')
+df_mes_compra.columns = ['nCompras']
 st.bar_chart(df_mes_compra)
 
-# KPI dinero gastado al mes
-df_gastos_mes = pd.DataFrame(get_mes).join(data['importe'])
-df_gastos_mes = df_gastos_mes.groupby('dia')['importe'].sum()
-st.caption('Importe gastado por mes.')
-st.bar_chart(df_gastos_mes)
+# Weather por mes
+weather_mes = dataWeather
+weather_mes = weather_mes.withColumn('FECHA', substring('FECHA', 1, 7))
+weather_mes = weather_mes.groupby('FECHA').agg(avg('TMax'), avg('TMed'), avg('TMin'))
+weather_mes = weather_mes.toPandas()
+weather_mes = weather_mes.set_index('FECHA')
+st.caption('Temperatura por mes.')
+st.line_chart(weather_mes)
 
-# KPI compras por día representado en lineas
-st.subheader("Compras por dia")
-st.caption('Numero de compras por dia.')
-counts_dia = Counter(data['dia'])
-df_dia_compra = pd.DataFrame.from_dict(counts_dia, orient='index')
-if st.checkbox('Mostrar compras por dia'):
-    st.line_chart(df_dia_compra, width=2000, use_container_width=False)
+# KPI dinero gastado al mes
+df_gastos_mes = df_mes.select('dia', 'importe')
+df_gastos_mes = df_gastos_mes.groupby('dia').sum('importe')
+st.caption('Importe gastado por mes.')
+df_gastos_mes = df_gastos_mes.toPandas()
+df_gastos_mes = df_gastos_mes.set_index('dia')
+st.area_chart(df_gastos_mes)
+
+# Compras por dias del mes
+st.subheader('Estadísticas por dias del mes')
+mes = st.select_slider(
+     'Selecciona el mes',
+     options=DICT_MES.keys(),
+     value='Enero'
+)
+
+# Numero de compras por dia
+df_dias_mes = dataCards.select('dia')
+df_dias_mes = df_dias_mes.filter(dataCards.dia.startswith(DICT_MES[mes]))
+list_dias_mes = [row[0] for row in df_dias_mes.select('dia').collect()]
+counts_dias = Counter(list_dias_mes)
+df_compras_dias_mes = pd.DataFrame.from_dict(counts_dias, orient='index')
+df_compras_dias_mes.columns = ['nCompras']
+st.caption('Numero de compras por dia del mes.')
+st.bar_chart(df_compras_dias_mes)
+
+# Temperatura por dia
+df_temp_dia = dataWeather.select('FECHA', 'TMax', 'TMed', 'TMin')
+df_temp_dia = df_temp_dia.filter(df_temp_dia.FECHA.startswith(DICT_MES[mes]))
+df_temp_dia = df_temp_dia.toPandas().set_index('FECHA')
+st.caption('Temperatura por dia del mes.')
+st.line_chart(df_temp_dia)
+
+# Precipitaciones por dia
+df_prec_dia = dataWeather.select('FECHA', 'Precip')
+df_prec_dia = df_prec_dia.filter(df_prec_dia.FECHA.startswith(DICT_MES[mes]))
+df_prec_dia = df_prec_dia.toPandas().set_index('FECHA')
+st.caption('Precipitaciones por dia del mes.')
+st.line_chart(df_prec_dia)
+
+
+
+
+
