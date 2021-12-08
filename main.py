@@ -1,16 +1,9 @@
-import _thread
-import time
-
-import numpy
-
 import streamlit as st
 import pandas as pd
-import numpy as np
-import re
 import pydeck as pdk
 from collections import Counter
-from pyspark.sql import Row, SparkSession
-from pyspark.sql.functions import hash, substring, avg
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import substring, avg
 from pyspark.sql.functions import regexp_replace, col
 from pyspark.sql.types import StringType, FloatType
 
@@ -36,10 +29,9 @@ DICT_MES = {
     'Diciembre': '2015-12'
 }
 
-# Mediante st.cache guardamos en cache los datos para no tener que cargarlos en cada prueba
 # Funcion para cargar n filas del csv
-# @st.cache
 def load_data(nFilas):
+
     # DataFrame del csv Cards
     dataCards = spark.read.options(delimiter="|", header=True, encoding='UTF-8').csv(DATA_CARDS).limit(nFilas)
     dataCards = dataCards.withColumn('importe', regexp_replace('importe', ',', '.'))  # data.mapInPandas(comas_por_puntos, data.schema)
@@ -49,7 +41,6 @@ def load_data(nFilas):
     dataCards = dataCards.withColumn('lat_cliente', col('lat_cliente').cast(FloatType()))
     dataCards = dataCards.withColumn('lon_cliente', col('lon_cliente').cast(FloatType()))
     dataCards = dataCards.withColumn('dia', col('dia').cast(StringType()))
-    # data.show()
 
     # DataFrame del csv Weather
     dataWeather = spark.read.options(delimiter=";", header=True, encoding='UTF-8').csv(DATA_WEATHER)
@@ -85,8 +76,8 @@ if nFilas:
         st.write(dataCards.toPandas())
 
     st.subheader('Numero de compras por franja horaria')
+    
     # Obtenemos las compras que hay por cada franja horaria y creamos un DataFrame para mostrarlo en el gráfico
-
     list_franja = []
     for col in dataCards.collect():
         list_franja.append(col["franja_horaria"])
@@ -101,21 +92,12 @@ if nFilas:
     # Creamos un slider para filtrar los resultados en el mapa
     hour_to_filter = st.select_slider('Hora', options=RANGO_HORAS)
 
-    # Como nos devuelve un entero, lo hacemos string y cambiamos para que pueda compararse con los datos del DataFrame
-    # En caso de ser un numero de un solo digito, lo añadimos un 0 al principio para coincidir con el formato del DataFrame
-    # if re.match(r'^\d$', str(hour_to_filter)) is None:
-    #     hour_to_filter = str(hour_to_filter) + '-' + str(hour_to_filter+2)
-    # else:
-    #     if hour_to_filter + 2 < 10:
-    #         hour_to_filter = '0' + str(hour_to_filter) + '-0' + str(hour_to_filter+2)
-    #     else:
-    #         hour_to_filter = '0' + str(hour_to_filter) + '-' + str(hour_to_filter+2)
-
     #Importe maximo del dataset
     importeMaxData = int(dataCards.agg({'importe': 'max'}).collect()[0]['max(importe)'])
 
     importe_to_filter = [None, None]
     if st.checkbox('Utilizar slider'):
+        
         # Creamos un slider para filtrar por importe en el mapa
         importe_to_filter = st.slider('Importe', 0, importeMaxData, (0, 50), step=1)
 
@@ -171,10 +153,9 @@ if nFilas:
         ))
 
     # KPI compras por mes representado en barras
-    st.subheader("Compras por mes")
+    st.subheader("Estadisticas por mes")
     df_mes = dataCards
     df_mes = df_mes.withColumn('dia', substring('dia', 1, 7))
-    # df_mes = spark.createDataFrame(get_mes, df_mes.schema)
     list_mes = []
     for col in df_mes.collect():
         list_mes.append(col["dia"])
