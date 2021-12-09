@@ -34,7 +34,7 @@ def load_data(nFilas):
 
     # DataFrame del csv Cards
     dataCards = spark.read.options(delimiter="|", header=True, encoding='UTF-8').csv(DATA_CARDS).limit(nFilas)
-    dataCards = dataCards.withColumn('importe', regexp_replace('importe', ',', '.'))  # data.mapInPandas(comas_por_puntos, data.schema)
+    dataCards = dataCards.withColumn('importe', regexp_replace('importe', ',', '.'))
     dataCards = dataCards.withColumn('importe', col('importe').cast(FloatType()))
     dataCards = dataCards.withColumn('lat', col('lat').cast(FloatType()))
     dataCards = dataCards.withColumn('lon', col('lon').cast(FloatType()))
